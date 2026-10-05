@@ -48,8 +48,8 @@ encryption. The two are not a like-for-like benchmark, and this repository does 
 **A TEE also lets the server act on the scores**, but it trusts the hardware vendor's attestation and isolation, and
 accepts side-channel exposure, instead of a cryptographic assumption. Its cost is close to plaintext, so the `plain`
 run serves as a rough stand-in for it. No TEE was measured, because the benchmark machine has no SGX, SEV or TDX.
-Against that stand-in, the 16-process encrypted search took about 4×10⁴ to 6×10⁴ times the wall-clock time of the
-single-threaded plaintext search over the same pairs (see Results).
+Against that stand-in, the 16-process encrypted search took about 1.6×10⁴ to 1.9×10⁴ times the wall-clock time of
+the single-threaded plaintext search over the same pairs (see Results).
 
 | | Plaintext | TEE | HE | This FE system |
 | --- | --- | --- | --- | --- |
@@ -87,16 +87,17 @@ Quality is on those 30 queries for all three runs.
 
 | dim | encrypt ms/doc | keygen ms/query | ms/pair per process | wall ms/pair, all processes | parallel search wall s | plaintext search s | ciphertext bytes/doc | key bytes/query |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 64 | 3.14 | 9.04 | 25.8 | 1.65 | 257.0 | 0.0057 | 3332 | 6596 |
-| 128 | 5.86 | 16.79 | 46.4 | 2.97 | 461.5 | 0.0126 | 6468 | 12804 |
-| 256 | 11.64 | 32.78 | 104.1 | 6.66 | 1034.9 | 0.0167 | 12740 | 25220 |
+| 64 | 1.55 | 3.80 | 8.4 | 0.54 | 83.7 | 0.0051 | 3332 | 6596 |
+| 128 | 3.01 | 7.31 | 15.4 | 0.99 | 154.1 | 0.0084 | 6468 | 12804 |
+| 256 | 5.92 | 14.44 | 30.7 | 1.98 | 307.3 | 0.0159 | 12740 | 25220 |
 
 Each run scores 5,183 documents × 30 queries = 155,490 pairs. "ms/pair per process" is the median `ms_per_pair` of
 the 16 `search` lines, measured while all 16 processes share 8 cores; "wall ms/pair" divides the `parallel_search`
 wall time by all pairs. Encryption and key generation run in one process. Byte counts are per record:
 (4 + dim) compressed G1 points of 49 bytes for a document, (4 + dim) G2 points of 97 bytes for a key. Every
-`search` process also decodes the full key file and its corpus shard (`load_seconds`, from about 5 s at dim 64 to
-17 s at dim 256), which is reported separately from `ms_per_pair`.
+`search` process also decodes the full key file and its corpus shard (`load_seconds`, from about 1.7 s at dim 64 to
+6.7 s at dim 256), which is reported separately from `ms_per_pair`. Two things set these timings: LibRBP's default
+x86-64 assembly backend for RELIC, and each `search` process preparing a query's key once before scoring its shard.
 
 **Quantization, all 300 test queries** (plaintext, `privret plain` against the float baseline):
 
