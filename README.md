@@ -32,7 +32,8 @@ squared document norm Nd and the key header the largest squared query norm Nq, s
 ⌊√(Nd·Nq)⌋ (Cauchy–Schwarz) and sizes its discrete-log table from the files alone.
 
 RELIC is single-threaded, so `scripts/search.sh` runs N `search` processes over disjoint document shards and merges
-their runs. Every byte on disk is defined in `include/privret/format.hpp`; ranking, merging and the score bound live in
+their runs; each `search` process prepares a query's key once (LibRBP's `PreparedG2`) and scores its whole shard
+against it. Every byte on disk is defined in `include/privret/format.hpp`; ranking, merging and the score bound live in
 `include/privret/search.hpp`.
 
 ## Why functional encryption

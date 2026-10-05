@@ -56,17 +56,18 @@ namespace privret{
         return hits;
     }
 
-    template <class D, class Q, class Score>
-    [[nodiscard]] Run rank(const SearchInput<D, Q>& input, Score score){
+    template <class D, class Q, class ScorerFor>
+    [[nodiscard]] Run rank(const SearchInput<D, Q>& input, ScorerFor scorer_for){
         const auto& [docs, queries, k] = input;
         if (docs.dim != queries.dim)
             throw FormatError(std::format("documents have dim {} but queries have dim {}", docs.dim, queries.dim));
         Run run;
         run.reserve(queries.ids.size());
         for (std::size_t q = 0; q < queries.ids.size(); ++q){
+            const auto score = scorer_for(q);
             std::vector<Hit> hits;
             hits.reserve(docs.ids.size());
-            for (std::size_t d = 0; d < docs.ids.size(); ++d) hits.push_back({docs.ids[d], score(q, d)});
+            for (std::size_t d = 0; d < docs.ids.size(); ++d) hits.push_back({docs.ids[d], score(d)});
             run.push_back({queries.ids[q], top_k(std::move(hits), k)});
         }
         return run;
@@ -86,8 +87,8 @@ namespace privret{
     }
 
     [[nodiscard]] inline Run search_plain(const SearchInput<Embedding, Embedding>& input){
-        return rank(input, [&](const std::size_t q, const std::size_t d){
-            return dot(input.queries.records[q], input.docs.records[d]);
+        return rank(input, [&](const std::size_t q){
+            return [&, q](const std::size_t d){ return dot(input.queries.records[q], input.docs.records[d]); };
         });
     }
 
@@ -97,14 +98,16 @@ namespace privret{
     }
 
     [[nodiscard]] inline Run search_encrypted(const SearchInput<Ct, Sk>& input, const rbp::DlogTable<Curve>& table){
-        return rank(input, [&](const std::size_t q, const std::size_t d){
-            const auto score = IPFE::OPT::dec(table, input.queries.records[q], input.docs.records[d]);
-            if (!score)
-                throw DecryptError(std::format(
-                    "query {} and doc {} decrypt outside the score range; were they made from the same master key?",
-                    input.queries.ids[q], input.docs.ids[d]
-                ));
-            return *score;
+        return rank(input, [&](const std::size_t q){
+            return [&, q, key = IPFE::OPT::prepare(input.queries.records[q])](const std::size_t d){
+                const auto score = IPFE::OPT::dec(table, key, input.docs.records[d]);
+                if (!score)
+                    throw DecryptError(std::format(
+                        "query {} and doc {} decrypt outside the score range; were they made from the same master key?",
+                        input.queries.ids[q], input.docs.ids[d]
+                    ));
+                return *score;
+            };
         });
     }
 
