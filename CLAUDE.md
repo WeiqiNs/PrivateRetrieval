@@ -16,8 +16,8 @@ python tests/fixture.py /tmp/smoke && privret run --data /tmp/smoke --out /tmp/s
 ```
 
 CI runs the same commands on Python 3.12 and 3.13. `pfe` builds from source, so a Rust toolchain is needed. `mypy` runs
-strict over `src` and `tests`; `pfe` ships no type stubs and CI omits the `embed` extra, so a `pyproject.toml`
-override treats `pfe` and the embedding libraries as untyped (`Any`).
+strict over `src` and `tests` and checks `pfe` against the type stubs it ships. CI omits the `embed` extra, so a
+`pyproject.toml` override treats only the embedding libraries as untyped (`Any`).
 
 ## Invariants
 
@@ -25,7 +25,8 @@ override treats `pfe` and the embedding libraries as untyped (`Any`).
   `RunMismatchError` otherwise.
 - `ranking.rank` owns the order (score descending, then doc id ascending) for plain, encrypted and float runs.
 - The score bound comes from the corpus and key headers alone, via `server.score_table`.
-- `server` takes only `Corpus` and `QueryKeys` and never imports `client`.
+- `server` takes only `Corpus` and `QueryKeys` and never imports `client`. They are distinct types, so mypy rejects
+  a corpus passed as keys or keys passed as a corpus.
 - `fileformat` owns the vector, corpus, key and master-key formats; files are decoded with `from_bytes`, never
   pickled. Ids are UTF-8.
 - Results are identical for any `--threads`, including more threads than documents.

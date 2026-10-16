@@ -12,7 +12,7 @@ requires-python = ">=3.12"
 dependencies = [
     "numpy>=2",
     "pytrec-eval-terrier>=0.5.10",
-    "pfe @ git+https://github.com/WeiqiNs/RustPFE@e60850a1d439eb1833d3c39e565bdf79c22122d5#subdirectory=python",
+    "pfe @ git+https://github.com/WeiqiNs/RustPFE@15b9b77428a633b75bae8aa4309b1e4837d6b141#subdirectory=python",
 ]
 
 [project.optional-dependencies]
@@ -49,6 +49,6 @@ warn_unreachable = true
 files = ["src", "tests"]
 
 [[tool.mypy.overrides]]
-module = ["pfe", "pfe.*", "datasets", "sentence_transformers", "torch", "torch.*"]
+module = ["datasets", "sentence_transformers", "torch", "torch.*"]
 follow_imports = "skip"
 ignore_missing_imports = true
