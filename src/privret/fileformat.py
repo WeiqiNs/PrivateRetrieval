@@ -10,6 +10,7 @@ from pfe.ipfe import opt
 
 from privret.errors import FormatError
 
+type Int8Matrix = np.ndarray[tuple[int, int], np.dtype[np.int8]]
 type Corpus = Sealed[opt.Ciphertext]
 type QueryKeys = Sealed[opt.Key]
 
@@ -43,7 +44,7 @@ def check_ids(ids: tuple[str, ...]) -> None:
 @dataclass(frozen=True, eq=False)
 class Vectors:
     ids: tuple[str, ...]
-    values: np.ndarray
+    values: Int8Matrix
 
     def __post_init__(self) -> None:
         check_ids(self.ids)
@@ -165,7 +166,7 @@ def decode_vectors(data: bytes) -> Vectors:
     return Vectors(ids, np.frombuffer(reader.take(size), dtype=np.int8).reshape(len(ids), dim))
 
 
-def encode_sealed[R](table: Sealed[R]) -> bytes:
+def encode_sealed[R: Record](table: Sealed[R]) -> bytes:
     return b"".join(
         [
             preamble(table.kind.magic, PFE_VERSION, table.dim),

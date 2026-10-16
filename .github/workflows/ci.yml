@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   test:
-    name: Lint, tests and smoke run (Python ${{ matrix.python }})
+    name: Lint, type check, tests and smoke run (Python ${{ matrix.python }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -41,6 +41,9 @@ jobs:
 
       - name: Lint
         run: ruff check && ruff format --check
+
+      - name: Type check
+        run: mypy
 
       - name: Test
         run: python -m pytest -q

@@ -5,9 +5,9 @@ from pathlib import Path
 
 import numpy as np
 import torch
-import torch.nn.functional as F
 from datasets import load_dataset
 from sentence_transformers import SentenceTransformer
+from torch.nn.functional import normalize
 
 from privret.fileformat import Vectors, encode_vectors
 from privret.quantize import quantize
@@ -50,7 +50,7 @@ def encode(model: SentenceTransformer, *, texts: list[str], prompt: str, batch_s
 
 
 def truncate(embeddings: torch.Tensor, dim: int) -> np.ndarray:
-    return F.normalize(embeddings[:, :dim], p=2, dim=1).float().cpu().numpy()
+    return np.asarray(normalize(embeddings[:, :dim], p=2, dim=1).cpu().numpy(), dtype=np.float32)
 
 
 def embed(*, out: Path, dims: Sequence[int], batch_size: int, device: str | None) -> None:

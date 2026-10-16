@@ -1,6 +1,7 @@
 import json
 import os
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TextIO
@@ -9,6 +10,7 @@ from pfe.ipfe import opt
 
 from privret import client, server
 from privret.errors import RunMismatchError
+from privret.evaluate import evaluate, format_table, read_qrels, read_run
 from privret.fileformat import (
     CIPHERTEXTS,
     KEYS,
@@ -28,7 +30,7 @@ from privret.ranking import format_run, search_plain
 class Timings:
     stream: TextIO
 
-    def record(self, command: str, **fields: int | float) -> None:
+    def record(self, command: str, **fields: float) -> None:
         self.stream.write(json.dumps({"command": command, **fields}) + "\n")
         self.stream.flush()
 
@@ -45,18 +47,9 @@ ENCRYPT = Sealing(CIPHERTEXTS, "encrypt", "docs", "ms_per_doc")
 KEYGEN = Sealing(KEYS, "keygen", "queries", "ms_per_query")
 
 
-@dataclass(frozen=True)
-class RunConfig:
-    data: Path
-    out: Path
-    top_k: int
-    max_queries: int | None
-    threads: int
-
-
-def read_vectors(path: Path, max_queries: int | None) -> Vectors:
+def read_vectors(path: Path, limit: int | None) -> Vectors:
     vectors = decode_vectors(path.read_bytes())
-    return vectors if max_queries is None else vectors.first(max_queries)
+    return vectors if limit is None else vectors.first(limit)
 
 
 def write(path: Path, data: bytes) -> None:
@@ -80,10 +73,10 @@ def setup(*, dim: int, msk: Path, timings: Timings) -> None:
 
 
 def seal_file[R: Record](
-    *, sealing: Sealing[R], msk: Path, vectors: Path, out: Path, max_queries: int | None, timings: Timings
+    *, sealing: Sealing[R], msk: Path, vectors: Path, out: Path, limit: int | None, timings: Timings
 ) -> None:
     key = decode_master_key(msk.read_bytes())
-    plain = read_vectors(vectors, max_queries)
+    plain = read_vectors(vectors, limit)
     start = time.perf_counter()
     sealed = client.seal(key, plain, sealing.kind)
     seconds = time.perf_counter() - start
@@ -138,30 +131,28 @@ def plain(*, docs: Path, queries: Path, out: Path, top_k: int, max_queries: int 
     timings.record("plain", docs=len(doc_vectors.ids), queries=len(query_vectors.ids), seconds=seconds)
 
 
-def run(config: RunConfig) -> None:
-    docs = config.data / "docs.i8v"
-    queries = config.data / "queries.i8v"
-    msk = config.out / "msk.bin"
-    corpus = config.out / "corpus.ct"
-    keys = config.out / "queries.sk"
-    encrypted_run = config.out / "encrypted.run"
-    plain_run = config.out / "plain.run"
+def run(*, data: Path, out: Path, top_k: int, max_queries: int | None, threads: int) -> None:
+    docs = data / "docs.i8v"
+    queries = data / "queries.i8v"
+    msk = out / "msk.bin"
+    corpus = out / "corpus.ct"
+    keys = out / "queries.sk"
+    encrypted_run = out / "encrypted.run"
+    plain_run = out / "plain.run"
     dim = decode_vectors(docs.read_bytes()).dim
-    config.out.mkdir(parents=True, exist_ok=True)
-    with (config.out / "timing.jsonl").open("w") as stream:
+    out.mkdir(parents=True, exist_ok=True)
+    with (out / "timing.jsonl").open("w") as stream:
         timings = Timings(stream)
         setup(dim=dim, msk=msk, timings=timings)
-        seal_file(sealing=ENCRYPT, msk=msk, vectors=docs, out=corpus, max_queries=None, timings=timings)
-        seal_file(sealing=KEYGEN, msk=msk, vectors=queries, out=keys, max_queries=config.max_queries, timings=timings)
-        search(corpus=corpus, keys=keys, out=encrypted_run, top_k=config.top_k, threads=config.threads, timings=timings)
-        plain(
-            docs=docs,
-            queries=queries,
-            out=plain_run,
-            top_k=config.top_k,
-            max_queries=config.max_queries,
-            timings=timings,
-        )
+        seal_file(sealing=ENCRYPT, msk=msk, vectors=docs, out=corpus, limit=None, timings=timings)
+        seal_file(sealing=KEYGEN, msk=msk, vectors=queries, out=keys, limit=max_queries, timings=timings)
+        search(corpus=corpus, keys=keys, out=encrypted_run, top_k=top_k, threads=threads, timings=timings)
+        plain(docs=docs, queries=queries, out=plain_run, top_k=top_k, max_queries=max_queries, timings=timings)
     if encrypted_run.read_bytes() != plain_run.read_bytes():
         raise RunMismatchError(f"{encrypted_run} differs from {plain_run}")
     print("runs match")
+
+
+def evaluate_runs(*, qrels: Path, runs: Sequence[Path]) -> None:
+    named_runs = {f"{path.parent.name}/{path.name}": read_run(path) for path in runs}
+    print(format_table(evaluate(read_qrels(qrels), named_runs)), end="")

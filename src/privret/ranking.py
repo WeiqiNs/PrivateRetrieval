@@ -24,7 +24,7 @@ class Ranking:
 def rank(*, query_ids: Sequence[str], doc_ids: Sequence[str], scores: np.ndarray, top_k: int) -> Run:
     id_rank = np.argsort(np.argsort(np.array(doc_ids, dtype=object)))
     return tuple(
-        Ranking(query, tuple(Hit(doc_ids[doc], row[doc].item()) for doc in np.lexsort((id_rank, -row))[:top_k]))
+        Ranking(query, tuple(Hit(doc_ids[int(doc)], row[doc].item()) for doc in np.lexsort((id_rank, -row))[:top_k]))
         for query, row in zip(query_ids, scores, strict=True)
     )
 

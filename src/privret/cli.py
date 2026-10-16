@@ -6,9 +6,8 @@ from pathlib import Path
 
 from privret import pipeline
 from privret.errors import MissingExtraError, PrivretError
-from privret.evaluate import evaluate, format_table, read_qrels, read_run
 from privret.fileformat import MAX_DIM
-from privret.pipeline import ENCRYPT, KEYGEN, RunConfig, Timings
+from privret.pipeline import ENCRYPT, KEYGEN, Timings
 
 
 def positive(text: str) -> int:
@@ -38,7 +37,7 @@ def setup(args: argparse.Namespace) -> None:
 
 def encrypt(args: argparse.Namespace) -> None:
     pipeline.seal_file(
-        sealing=ENCRYPT, msk=args.msk, vectors=args.vectors, out=args.out, max_queries=None, timings=stderr_timings()
+        sealing=ENCRYPT, msk=args.msk, vectors=args.vectors, out=args.out, limit=None, timings=stderr_timings()
     )
 
 
@@ -48,7 +47,7 @@ def keygen(args: argparse.Namespace) -> None:
         msk=args.msk,
         vectors=args.vectors,
         out=args.out,
-        max_queries=args.max_queries,
+        limit=args.max_queries,
         timings=stderr_timings(),
     )
 
@@ -76,9 +75,7 @@ def plain(args: argparse.Namespace) -> None:
 
 
 def run(args: argparse.Namespace) -> None:
-    pipeline.run(
-        RunConfig(data=args.data, out=args.out, top_k=args.top_k, max_queries=args.max_queries, threads=args.threads)
-    )
+    pipeline.run(data=args.data, out=args.out, top_k=args.top_k, max_queries=args.max_queries, threads=args.threads)
 
 
 def embed(args: argparse.Namespace) -> None:
@@ -91,9 +88,8 @@ def embed(args: argparse.Namespace) -> None:
     embedding.embed(out=args.out, dims=args.dims, batch_size=args.batch_size, device=args.device)
 
 
-def quality(args: argparse.Namespace) -> None:
-    runs = {f"{path.parent.name}/{path.name}": read_run(path) for path in args.runs}
-    print(format_table(evaluate(read_qrels(args.qrels), runs)), end="")
+def evaluate(args: argparse.Namespace) -> None:
+    pipeline.evaluate_runs(qrels=args.qrels, runs=args.runs)
 
 
 def parser() -> argparse.ArgumentParser:
@@ -153,7 +149,7 @@ def parser() -> argparse.ArgumentParser:
     max_queries(sub)
     threads(sub)
 
-    sub = command("evaluate", quality, "score runs on their shared queries with nDCG@10 and Recall@100")
+    sub = command("evaluate", evaluate, "score runs on their shared queries with nDCG@10 and Recall@100")
     path(sub, "--qrels")
     sub.add_argument("runs", type=Path, nargs="+")
 

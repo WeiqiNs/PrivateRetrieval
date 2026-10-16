@@ -22,7 +22,7 @@ embed = ["torch>=2.6", "sentence-transformers>=5", "datasets>=3"]
 privret = "privret.cli:main"
 
 [dependency-groups]
-dev = ["pytest>=8", "ruff>=0.14"]
+dev = ["mypy>=1.18", "pytest>=8", "ruff>=0.14"]
 
 [tool.hatch.metadata]
 allow-direct-references = true
@@ -35,4 +35,20 @@ line-length = 120
 target-version = "py312"
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "PTH"]
+select = ["ALL"]
+ignore = ["D", "CPY", "COM812", "ISC001", "EM", "TRY003", "PLR0913"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/privret/cli.py" = ["PLC0415", "T201"]
+"src/privret/{embed,pipeline}.py" = ["T201"]
+"tests/*.py" = ["INP001", "PLR2004", "S101"]
+
+[tool.mypy]
+strict = true
+warn_unreachable = true
+files = ["src", "tests"]
+
+[[tool.mypy.overrides]]
+module = ["pfe", "pfe.*", "datasets", "sentence_transformers", "torch", "torch.*"]
+follow_imports = "skip"
+ignore_missing_imports = true

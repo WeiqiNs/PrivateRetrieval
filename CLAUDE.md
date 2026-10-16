@@ -10,11 +10,14 @@ user-facing overview.
 ```bash
 pip install -e ".[embed]" --group dev   # drop [embed] when torch is not needed
 ruff check && ruff format --check
+mypy
 python -m pytest -q
 python tests/fixture.py /tmp/smoke && privret run --data /tmp/smoke --out /tmp/smoke/out --top-k 5 --max-queries 2 --threads 3
 ```
 
-CI runs the same commands on Python 3.12 and 3.13. `pfe` builds from source, so a Rust toolchain is needed.
+CI runs the same commands on Python 3.12 and 3.13. `pfe` builds from source, so a Rust toolchain is needed. `mypy` runs
+strict over `src` and `tests`; `pfe` ships no type stubs and CI omits the `embed` extra, so a `pyproject.toml`
+override treats `pfe` and the embedding libraries as untyped (`Any`).
 
 ## Invariants
 

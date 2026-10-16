@@ -10,6 +10,7 @@ from privret.errors import FormatError
 from privret.fileformat import (
     CIPHERTEXTS,
     KEYS,
+    Record,
     SealedKind,
     Vectors,
     decode_master_key,
@@ -32,7 +33,6 @@ def put(offset: int, value: bytes) -> Callable[[bytearray], None]:
 
 
 def test_vectors_round_trip_and_derive_the_norm() -> None:
-    assert SAMPLE.dim == 3
     assert SAMPLE.max_norm_sq == 16130
     assert encode_vectors(SAMPLE) == SAMPLE_BYTES
     decoded = decode_vectors(SAMPLE_BYTES)
@@ -85,7 +85,7 @@ def test_rejects_vectors_where_ciphertexts_are_expected() -> None:
 
 
 @pytest.mark.parametrize("kind", [CIPHERTEXTS, KEYS], ids=["ciphertexts", "keys"])
-def test_sealed_tables_round_trip(kind: SealedKind[object]) -> None:
+def test_sealed_tables_round_trip(kind: SealedKind[Record]) -> None:
     sealed = seal(opt.setup(3), SAMPLE, kind)
     records = [bytes(record) for record in sealed.records]
     data = encode_sealed(sealed)

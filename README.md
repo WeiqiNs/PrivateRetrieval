@@ -139,7 +139,7 @@ conda activate privret
 pip install -e ".[embed]" --group dev
 ```
 
-`--group dev` adds pytest and ruff and needs pip 25.1 or newer. The `embed` extra pulls in torch,
+`--group dev` adds pytest, ruff and mypy and needs pip 25.1 or newer. The `embed` extra pulls in torch,
 sentence-transformers and datasets and is only needed for `privret embed`; without it, `pip install -e .` installs
 everything else, which is enough to encrypt, search and evaluate existing vector files.
 
@@ -166,6 +166,7 @@ timing line to stderr.
 
 ```sh
 ruff check && ruff format --check
+mypy
 python -m pytest -q
 ```
 
