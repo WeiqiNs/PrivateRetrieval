@@ -171,8 +171,9 @@ python -m pytest -q
 ```
 
 The tests cover the file formats and their rejection of malformed input, the ranking order, encrypted search against
-plaintext search for several thread counts, quantization, evaluation, and an end-to-end `privret run` on a tiny
-fixture (`tests/fixture.py`), which CI also runs as a smoke test on Python 3.12 and 3.13.
+plaintext search for several thread counts, quantization, evaluation, the files `privret embed` writes, built from
+synthetic embeddings, and an end-to-end `privret run` on a tiny fixture (`tests/fixture.py`), which CI also runs as a
+smoke test on Python 3.12 and 3.13.
 
 ## The PFE family
 

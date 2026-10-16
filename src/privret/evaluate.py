@@ -6,6 +6,8 @@ import pytrec_eval
 
 from privret.errors import FormatError, PrivretError
 
+type Qrels = dict[str, dict[str, int]]
+
 MEASURES = {"ndcg_cut.10", "recall.100"}
 
 
@@ -25,14 +27,18 @@ def fields(path: Path, count: int) -> list[list[str]]:
     return rows
 
 
-def read_qrels(path: Path) -> dict[str, dict[str, int]]:
-    qrels: dict[str, dict[str, int]] = {}
+def read_qrels(path: Path) -> Qrels:
+    qrels: Qrels = {}
     for query, _, doc, rel in fields(path, 4):
         try:
             qrels.setdefault(query, {})[doc] = int(rel)
         except ValueError as err:
             raise FormatError(f"{path} has a non-integer relevance {rel!r}") from err
     return qrels
+
+
+def format_qrels(qrels: Qrels) -> str:
+    return "".join(f"{query} 0 {doc} {rel}\n" for query, judged in qrels.items() for doc, rel in judged.items())
 
 
 def read_run(path: Path) -> dict[str, dict[str, float]]:

@@ -85,7 +85,7 @@ def embed(args: argparse.Namespace) -> None:
         raise MissingExtraError(
             f"privret embed needs the embed extra (missing {err.name}): pip install -e '.[embed]'"
         ) from err
-    embedding.embed(out=args.out, dims=args.dims, batch_size=args.batch_size, device=args.device)
+    pipeline.embed(export=embedding.embed(dims=args.dims, batch_size=args.batch_size, device=args.device), out=args.out)
 
 
 def evaluate(args: argparse.Namespace) -> None:

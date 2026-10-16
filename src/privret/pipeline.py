@@ -10,7 +10,8 @@ from pfe.ipfe import opt
 
 from privret import client, server
 from privret.errors import RunMismatchError
-from privret.evaluate import evaluate, format_table, read_qrels, read_run
+from privret.evaluate import evaluate, format_qrels, format_table, read_qrels, read_run
+from privret.export import Export
 from privret.fileformat import (
     CIPHERTEXTS,
     KEYS,
@@ -22,6 +23,7 @@ from privret.fileformat import (
     decode_vectors,
     encode_master_key,
     encode_sealed,
+    encode_vectors,
 )
 from privret.ranking import format_run, search_plain
 
@@ -62,6 +64,25 @@ def write_private(path: Path, data: bytes) -> None:
     with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "wb") as out:
         os.fchmod(out.fileno(), 0o600)
         out.write(data)
+
+
+def embed(*, export: Export, out: Path) -> None:
+    write(out / "qrels.tsv", format_qrels(export.qrels).encode())
+    for dim_export in export.dims:
+        folder = out / f"d{dim_export.docs.dim}"
+        write(folder / "docs.i8v", encode_vectors(dim_export.docs))
+        write(folder / "queries.i8v", encode_vectors(dim_export.queries))
+        write(folder / "float.run", format_run(dim_export.float_run, tag="float", score_spec=".6f").encode())
+        summary = {
+            "dim": dim_export.docs.dim,
+            "scale": dim_export.scale,
+            "max_abs_doc": dim_export.max_abs_doc,
+            "clipped_query_entries": dim_export.clipped,
+            "docs": len(dim_export.docs.ids),
+            "queries": len(dim_export.queries.ids),
+        }
+        write(folder / "quant.json", (json.dumps(summary, indent=2) + "\n").encode())
+        print(json.dumps(summary))
 
 
 def setup(*, dim: int, msk: Path, timings: Timings) -> None:

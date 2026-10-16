@@ -29,6 +29,8 @@ override treats `pfe` and the embedding libraries as untyped (`Any`).
 - `fileformat` owns the vector, corpus, key and master-key formats; files are decoded with `from_bytes`, never
   pickled. Ids are UTF-8.
 - Results are identical for any `--threads`, including more threads than documents.
+- `privret.embed` is the only module importing torch, datasets or sentence-transformers, and `cli` imports it
+  lazily, so everything else, CI included, runs without the `embed` extra.
 - No comments or docstrings in code.
 
 ## Layout
@@ -36,7 +38,12 @@ override treats `pfe` and the embedding libraries as untyped (`Any`).
 - `src/privret/fileformat.py`: vector, sealed-table and master-key encodings and their validation.
 - `src/privret/ranking.py`: `rank`, plaintext search and TREC formatting.
 - `src/privret/client.py`, `server.py`: sealing on the key holder's side; scoring and ranking on the server's.
-- `src/privret/pipeline.py`: every command's file I/O and timing; `cli.py` only parses arguments.
-- `src/privret/embed.py`, `quantize.py`, `evaluate.py`: embedding (the `embed` extra), int8 quantization, quality.
+- `src/privret/pipeline.py`: every command's file I/O and timing, including every file `privret embed` writes;
+  `cli.py` only parses arguments.
+- `src/privret/embed.py`: embeds SciFact and computes the export (the `embed` extra); it writes nothing.
+- `src/privret/export.py`: the torch-free per-dim products of an embedding (int8 vectors, float run, quantization
+  summary).
+- `src/privret/quantize.py`, `evaluate.py`: int8 quantization; qrels and run formats and quality.
 - `tests/`: `test_search.py` checks encrypted against plain search, `test_pipeline.py` drives the CLI end to end on
-  `fixture.py`, the tiny dataset the CI smoke run also uses.
+  `fixture.py`, the tiny dataset the CI smoke run also uses, and checks the files `pipeline.embed` writes from
+  synthetic embeddings.

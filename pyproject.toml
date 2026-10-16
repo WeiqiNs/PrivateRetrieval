@@ -40,7 +40,7 @@ ignore = ["D", "CPY", "COM812", "ISC001", "EM", "TRY003", "PLR0913"]
 
 [tool.ruff.lint.per-file-ignores]
 "src/privret/cli.py" = ["PLC0415", "T201"]
-"src/privret/{embed,pipeline}.py" = ["T201"]
+"src/privret/pipeline.py" = ["T201"]
 "tests/*.py" = ["INP001", "PLR2004", "S101"]
 
 [tool.mypy]
