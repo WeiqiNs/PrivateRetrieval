@@ -1,11 +1,13 @@
-# PrivateRetrieval
+# Private Embedding Retrieval with Functional Encryption (PrivateRetrieval)
+
+[![PrivateRetrieval CI](https://github.com/WeiqiNs/PrivateRetrieval/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/WeiqiNs/PrivateRetrieval/actions/workflows/ci.yml)
 
 PrivateRetrieval ranks an encrypted document corpus against encrypted queries on an untrusted server. The client
 embeds documents and queries, quantizes the embeddings to int8, encrypts the documents and turns each query into a
-functional key with the function-hiding inner-product scheme `IPFE::OPT` from
-[LibPFE](https://github.com/WeiqiNs/LibPFE) on BLS12-381. The server decrypts only the inner product of each
-(document, query) pair, ranks the documents itself and returns the top-k as a TREC run. That run is byte-identical to
-a plaintext integer search over the same int8 vectors, which the driver checks on every run.
+functional key with the function-hiding inner-product scheme of Ojaswi et al. (`pfe.ipfe.opt` from
+[RustPFE](https://github.com/WeiqiNs/RustPFE)'s Python binding, on BLS12-381). The server decrypts only the inner
+product of each (document, query) pair, ranks the documents itself and returns the top-k as a TREC run. That run is
+byte-identical to a plaintext integer search over the same int8 vectors, which `privret run` checks every time.
 
 The evaluation uses [BEIR SciFact](https://huggingface.co/datasets/BeIR/scifact) with
 [Qwen/Qwen3-Embedding-0.6B](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B). The model was chosen because it is
@@ -13,33 +15,24 @@ trained for Matryoshka truncation, so a slice of its embedding, renormalized, st
 dimensions, where encryption is affordable, and because transformers and sentence-transformers support it natively,
 without remote code.
 
-## How it works
+## Quick start
 
-| Step | Who | Command | Output |
-| --- | --- | --- | --- |
-| Embed, truncate, quantize | client | `scripts/embed.py` | `docs.i8v`, `queries.i8v`, a float baseline run |
-| Master key | client | `privret setup` | `msk.bin`, mode 600 |
-| Encrypt the corpus | client | `privret encrypt` | `corpus.ct` |
-| Query keys | client | `privret keygen` | `queries.sk` |
-| Score and rank a shard | server | `privret search --shard i/N` | one TREC run per shard |
-| Combine shards | server | `privret merge` | the encrypted run |
-| Reference | anyone with the vectors | `privret plain` | the plaintext integer run |
+```sh
+pip install -e ".[embed]"
+privret embed --out data/scifact --dims 64
+privret run --data data/scifact/d64 --out runs/d64-q30 --top-k 100 --max-queries 30
+privret evaluate --qrels data/scifact/qrels.tsv \
+    data/scifact/d64/float.run runs/d64-q30/plain.run runs/d64-q30/encrypted.run
+```
 
-Each embedding is sliced to the target dimension, L2-normalized and scaled by one factor per dimension,
-`s = 127 / max |doc entry|`, fixed from the documents at index time and reused for queries, whose entries are
-clipped to [-127, 127]; `quant.json` records the scale and the clip count. The ciphertext header stores the largest
-squared document norm Nd and the key header the largest squared query norm Nq, so the server bounds every score by
-⌊√(Nd·Nq)⌋ (Cauchy–Schwarz) and sizes its discrete-log table from the files alone.
-
-RELIC is single-threaded, so `scripts/search.sh` runs N `search` processes over disjoint document shards and merges
-their runs; each `search` process prepares a query's key once (LibRBP's `PreparedG2`) and scores its whole shard
-against it. Every byte on disk is defined in `include/privret/format.hpp`; ranking, merging and the score bound live in
-`include/privret/search.hpp`.
+`privret run` writes the master key, the encrypted corpus, the query keys, both runs and `timing.jsonl` to its output
+directory and prints `runs match` once the encrypted run equals the plaintext one. See [Install](#install) for the
+environment.
 
 ## Why functional encryption
 
 **The server learns the scores and nothing else.** A functional key for query q lets the server compute ⟨d, q⟩ for
-every encrypted document d, and `IPFE::OPT` hides both vectors beyond that value. The server therefore ranks and
+every encrypted document d, and `pfe.ipfe.opt` hides both vectors beyond that value. The server therefore ranks and
 returns the top-k on its own, in one non-interactive pass. Homomorphic encryption offers a different capability:
 the server learns nothing, not even the scores. Encrypted scores go back to the key holder, so server-side top-k
 needs an extra round with the client, client work proportional to the corpus, or expensive comparisons under
@@ -48,8 +41,8 @@ encryption. The two are not a like-for-like benchmark, and this repository does 
 **A TEE also lets the server act on the scores**, but it trusts the hardware vendor's attestation and isolation, and
 accepts side-channel exposure, instead of a cryptographic assumption. Its cost is close to plaintext, so the `plain`
 run serves as a rough stand-in for it. No TEE was measured, because the benchmark machine has no SGX, SEV or TDX.
-Against that stand-in, the 16-process encrypted search took about 2.6×10⁴ to 3.4×10⁴ times the wall-clock time of
-the single-threaded plaintext search over the same pairs (see Results).
+Against that stand-in, the 16-thread encrypted search took about 1.5×10⁴ to 2.5×10⁴ times the wall-clock time of the plaintext search
+over the same pairs (see Results).
 
 | | Plaintext | TEE | HE | This FE system |
 | --- | --- | --- | --- | --- |
@@ -57,7 +50,7 @@ the single-threaded plaintext search over the same pairs (see Results).
 | Where top-k runs | server | enclave | client, or server with extra rounds or encrypted comparisons | server |
 | Round trips per query batch | 1 | 1 | 1 for scores; more for server-side top-k | 1 |
 | Client work | none | attestation | decrypt the scores (proportional to the corpus) or join comparison rounds | key generation per query |
-| Trust assumption | trusted server | hardware vendor, no exploitable side channels | lattice hardness | pairing group (generic group model for `IPFE::OPT`) |
+| Trust assumption | trusted server | hardware vendor, no exploitable side channels | lattice hardness | pairing group (generic group model for `pfe.ipfe.opt`) |
 
 ### What the server learns
 
@@ -71,12 +64,38 @@ the single-threaded plaintext search over the same pairs (see Results).
   `dim` linearly independent documents in the corpus solves a linear system for any query from that query's scores;
   symmetrically, `dim` known queries reveal any document.
 
+## How it works
+
+| Step | Who | Command | Output |
+| --- | --- | --- | --- |
+| Embed, truncate, quantize | client | `privret embed` | `docs.i8v`, `queries.i8v`, `qrels.tsv`, a float baseline run |
+| Master key | client | `privret setup` | `msk.bin`, mode 600 |
+| Encrypt the corpus | client | `privret encrypt` | `corpus.ct` |
+| Query keys | client | `privret keygen` | `queries.sk` |
+| Score and rank | server | `privret search --threads N` | the encrypted run |
+| Reference | anyone with the vectors | `privret plain` | the plaintext integer run |
+| Everything above, checked | client | `privret run` | all of the above, `timing.jsonl`, and `runs match` |
+| Quality | anyone with the qrels | `privret evaluate` | nDCG@10 and Recall@100 per run |
+
+Each embedding is sliced to the target dimension, L2-normalized and scaled by one factor per dimension,
+`s = 127 / max |doc entry|`, fixed from the documents at index time and reused for queries, whose entries are
+clipped to [-127, 127]; `quant.json` records the scale and the clip count. The ciphertext header stores the largest
+squared document norm Nd and the key header the largest squared query norm Nq, so the server bounds every score by
+⌊√(Nd·Nq)⌋ (Cauchy–Schwarz) and sizes its discrete-log table from the files alone.
+
+`search` runs in one process. It decodes the corpus and the keys on a pool of `--threads` Python threads, prepares
+each query's key once (`opt.prepare`, which precomputes the key's side of every pairing), and decrypts the whole corpus
+against it on a pool of the same size. The binding releases the GIL while it decodes and decrypts, so the threads run in
+parallel, and RustPFE's rayon pool spreads each decryption's pairing product over the cores as well. The ranking is
+the same for any thread count. The vector, corpus, key and master-key file formats are defined in
+`src/privret/fileformat.py`; ranking lives in `ranking.rank`.
+
 ## Results
 
-Measured on an AMD Ryzen 7 9800X3D (8 cores, 16 threads); embeddings computed on an RTX 5080. Quality comes from
-`scripts/evaluate.py` over `data/scifact/qrels.tsv`; timings come from each run's `runs/d<dim>-q30/timing.jsonl`.
+Measured on an AMD Ryzen 7 9800X3D (8 cores, 16 threads) with Python 3.12; embeddings computed on an RTX 5080. Quality
+comes from `privret evaluate` over `data/scifact/qrels.tsv`; timings come from each run's `timing.jsonl`.
 
-**Encrypted runs, 30-query subset** (the first 30 test queries, `--max-queries 30`, top-k 100, 16 search processes).
+**Encrypted runs, 30-query subset** (the first 30 test queries, `--max-queries 30`, top-k 100, `--threads 16`).
 Quality is on those 30 queries for all three runs.
 
 | dim | float nDCG@10 | int8 nDCG@10 | encrypted nDCG@10 | float R@100 | int8 R@100 | encrypted R@100 |
@@ -85,19 +104,19 @@ Quality is on those 30 queries for all three runs.
 | 128 | 0.6263 | 0.6246 | 0.6246 | 0.9000 | 0.9000 | 0.9000 |
 | 256 | 0.6711 | 0.6724 | 0.6724 | 0.9333 | 0.9333 | 0.9333 |
 
-| dim | encrypt ms/doc | keygen ms/query | ms/pair per process | wall ms/pair, all processes | parallel search wall s | plaintext search s | ciphertext bytes/doc | key bytes/query |
-| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 64 | 3.03 | 8.67 | 15.9 | 1.03 | 159.6 | 0.0062 | 3332 | 6596 |
-| 128 | 6.23 | 16.75 | 27.8 | 1.80 | 279.7 | 0.0084 | 6468 | 12804 |
-| 256 | 11.52 | 33.00 | 53.9 | 3.48 | 540.7 | 0.0158 | 12740 | 25220 |
+| dim | encrypt ms/doc | keygen ms/query | ms/pair, one core | ms/pair, 16 threads | search wall s | plaintext search s | search ÷ plaintext | ciphertext bytes/doc | key bytes/query |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 64 | 0.178 | 0.446 | 10.0 | 1.09 | 169.7 | 0.0112 | 1.5×10⁴ | 3268 | 6532 |
+| 128 | 0.270 | 0.676 | 18.4 | 1.98 | 308.6 | 0.0151 | 2.0×10⁴ | 6340 | 12676 |
+| 256 | 0.425 | 1.101 | 39.0 | 3.74 | 581.8 | 0.0230 | 2.5×10⁴ | 12484 | 24964 |
 
-Each run scores 5,183 documents × 30 queries = 155,490 pairs. "ms/pair per process" is the median `ms_per_pair` of
-the 16 `search` lines, measured while all 16 processes share 8 cores; "wall ms/pair" divides the `parallel_search`
-wall time by all pairs. Encryption and key generation run in one process. Byte counts are per record:
-(4 + dim) compressed G1 points of 49 bytes for a document, (4 + dim) G2 points of 97 bytes for a key. Every
-`search` process also decodes the full key file and its corpus shard (`load_seconds`, from about 3.7 s at dim 64 to
-15 s at dim 256), which is reported separately from `ms_per_pair`. Each `search` process prepares a query's key once
-(LibRBP's `PreparedG2`) before scoring its shard, which makes each pair about 40% cheaper than an ordinary pairing.
+Each run scores 5,183 documents × 30 queries = 155,490 pairs. "ms/pair, 16 threads" is the search's `ms_per_pair`, its
+wall time divided by all pairs; "one core" is the `ms_per_pair` of a one-query run with `--threads 1` and
+`RAYON_NUM_THREADS=1`. The plaintext search is one numpy matrix product plus the same ranking, on one thread.
+Encryption and key generation call RustPFE once per vector from one Python thread. Byte counts are per record: the
+4-byte dim, then (4 + dim) compressed G1 points of 48 bytes for a document or (4 + dim) G2 points of 96 bytes for a
+key. Before scoring, `search` decodes the corpus and the keys (`load_seconds`, from 1.8 s at dim 64 to 6.8 s at dim 256
+on 16 threads), which is reported separately from `ms_per_pair`.
 
 **Quantization, all 300 test queries** (plaintext, `privret plain` against the float baseline):
 
@@ -109,50 +128,64 @@ wall time by all pairs. Encryption and key generation run in one process. Byte c
 
 The encrypted run equals the int8 run byte for byte, so its quality on any query set is the int8 quality.
 
-## Build
+## Install
 
-Needs CMake 3.25 or newer, a C++20 compiler and GMP. CMake fetches LibPFE, which fetches LibRBP, which builds RELIC;
-`RBP_CURVES` defaults to `bls12_381` here, so only that curve is built. GoogleTest is fetched when not installed.
-
-```sh
-cmake -B build -S .
-cmake --build build --parallel
-ctest --test-dir build --output-on-failure
-```
-
-To build against local checkouts instead of GitHub:
-
-```sh
-cmake -B build -S . -DFETCHCONTENT_SOURCE_DIR_PFE=/path/to/LibPFE -DFETCHCONTENT_SOURCE_DIR_RBP=/path/to/LibRBP
-```
-
-`ctest` runs the format and search unit tests and a smoke test that drives `scripts/search.sh` end to end on a tiny
-fixture.
-
-## Run
-
-The Python side needs torch, sentence-transformers, datasets, numpy and pytrec-eval-terrier, for example in a conda
-environment:
+Python 3.12 or newer and a Rust toolchain ([rustup](https://rustup.rs)), because `pfe` builds from source. For
+example, in a conda environment:
 
 ```sh
 conda create -n privret python=3.12
-conda run -n privret pip install torch sentence-transformers datasets numpy pytrec-eval-terrier
+conda activate privret
+pip install -e ".[embed]" --group dev
 ```
+
+`--group dev` adds pytest and ruff and needs pip 25.1 or newer. The `embed` extra pulls in torch,
+sentence-transformers and datasets and is only needed for `privret embed`; without it, `pip install -e .` installs
+everything else, which is enough to encrypt, search and evaluate existing vector files.
+
+## Reproduce
 
 Export the vectors, the qrels and the float baseline for each dimension, then run the encrypted pipeline and score it:
 
 ```sh
-conda run -n privret python scripts/embed.py --out data/scifact --dims 64 128 256
-scripts/search.sh --bin build/privret --data data/scifact/d64 --out runs/d64-q30 \
-    --dim 64 --procs 16 --top-k 100 --max-queries 30
-conda run -n privret python scripts/evaluate.py --qrels data/scifact/qrels.tsv \
+privret embed --out data/scifact --dims 64 128 256
+for d in 64 128 256; do
+    privret run --data data/scifact/d$d --out runs/d$d-q30 --top-k 100 --max-queries 30 --threads 16
+    privret plain --docs data/scifact/d$d/docs.i8v --queries data/scifact/d$d/queries.i8v --top-k 100 \
+        --out runs/d$d/plain.run
+done
+privret evaluate --qrels data/scifact/qrels.tsv \
     data/scifact/d64/float.run runs/d64-q30/plain.run runs/d64-q30/encrypted.run
 ```
 
-`search.sh` writes `msk.bin`, `corpus.ct`, `queries.sk`, the shard runs, `encrypted.run`, `plain.run` and
-`timing.jsonl` to its output directory, and prints `runs match` once `encrypted.run` equals `plain.run`. Drop
-`--max-queries` to search every query. `evaluate.py` scores every run on the queries they share. Running `privret`
-with no arguments prints the usage of each subcommand.
+Drop `--max-queries` to search every query. `--threads` defaults to the number of CPUs. `evaluate` scores every run
+on the queries they share. Each subcommand prints its options with `--help`; the standalone commands write their
+timing line to stderr.
+
+## Tests
+
+```sh
+ruff check && ruff format --check
+python -m pytest -q
+```
+
+The tests cover the file formats and their rejection of malformed input, the ranking order, encrypted search against
+plaintext search for several thread counts, quantization, evaluation, and an end-to-end `privret run` on a tiny
+fixture (`tests/fixture.py`), which CI also runs as a smoke test on Python 3.12 and 3.13.
+
+## The PFE family
+
+LibPFE, GoPFE and RustPFE implement the same eight inner-product and quadratic functional encryption schemes with the
+same test cases and benchmark inputs; LibRBP is the pairing layer under LibPFE. PrivateRetrieval is an application
+built on RustPFE's Python binding.
+
+| Repository | Language | Pairing backend | Role |
+| --- | --- | --- | --- |
+| [LibRBP](https://github.com/WeiqiNs/LibRBP) | C++20 | [RELIC](https://github.com/relic-toolkit/relic) | Typed, thread-safe pairing library: curves, groups, pairings, linear algebra, dlog tables |
+| [LibPFE](https://github.com/WeiqiNs/LibPFE) | C++20 | LibRBP | The eight schemes as header-only templates over any LibRBP curve |
+| [GoPFE](https://github.com/WeiqiNs/GoPFE) | Go | [gnark-crypto](https://github.com/Consensys/gnark-crypto) | The eight schemes on BLS12-381, parallel across `GOMAXPROCS` |
+| [RustPFE](https://github.com/WeiqiNs/RustPFE) | Rust, Python | [arkworks](https://github.com/arkworks-rs/algebra) | The eight schemes in safe Rust over any arkworks pairing curve, with a PyO3 Python binding |
+| **PrivateRetrieval** (this repo) | Python | RustPFE | Private embedding retrieval on `pfe.ipfe.opt` |
 
 ## License
 

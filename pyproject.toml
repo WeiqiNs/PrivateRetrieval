@@ -1,0 +1,38 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "privret"
+version = "0.2.0"
+description = "Private embedding retrieval with function-hiding inner-product functional encryption."
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.12"
+dependencies = [
+    "numpy>=2",
+    "pytrec-eval-terrier>=0.5.10",
+    "pfe @ git+https://github.com/WeiqiNs/RustPFE@e60850a1d439eb1833d3c39e565bdf79c22122d5#subdirectory=python",
+]
+
+[project.optional-dependencies]
+embed = ["torch>=2.6", "sentence-transformers>=5", "datasets>=3"]
+
+[project.scripts]
+privret = "privret.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.14"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "PTH"]
