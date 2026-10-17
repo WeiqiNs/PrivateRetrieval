@@ -2,7 +2,6 @@ build/
 dist/
 data/
 runs/
-runs-cpp/
 __pycache__/
 *.egg-info/
 .pytest_cache/

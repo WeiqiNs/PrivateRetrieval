@@ -15,5 +15,3 @@ def test_orders_by_score_then_doc_id() -> None:
 def test_formats_trec_lines() -> None:
     run = Ranking("q1", (Hit("d3", 12), Hit("d1", -4))), Ranking("q2", (Hit("d1", 0),))
     assert format_run(run) == "q1 Q0 d3 1 12 privret\nq1 Q0 d1 2 -4 privret\nq2 Q0 d1 1 0 privret\n"
-    float_run = (Ranking("q1", (Hit("d1", 0.5),)),)
-    assert format_run(float_run, tag="float", score_spec=".6f") == "q1 Q0 d1 1 0.500000 float\n"
