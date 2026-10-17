@@ -4,7 +4,7 @@
 
 Private embedding search: an untrusted server ranks an encrypted document corpus against encrypted queries and
 learns only the similarity scores. Documents are encrypted and each query becomes a functional key under the
-function-hiding inner-product scheme of Ojaswi et al. (`pfe.ipfe.opt` from [RustPFE](https://github.com/WeiqiNs/RustPFE), BLS12-381), so
+function-hiding inner-product scheme of Acharya et al. (`pfe.ipfe.opt` from [RustPFE](https://github.com/WeiqiNs/RustPFE), BLS12-381), so
 the server computes ⟨document, query⟩ for every pair, ranks on its own and returns the top-k in one non-interactive
 pass. The encrypted ranking is byte-identical to a plaintext integer search over the same vectors, and every run
 checks it.
@@ -72,11 +72,15 @@ at most 0.001 nDCG@10 against the float embeddings over all 300 test queries.
 privret embed --out data/scifact --dims 64 128 256
 for d in 64 128 256; do
     privret run --data data/scifact/d$d --out runs/d$d-q30 --top-k 100 --max-queries 30 --threads 16
+    privret plain --docs data/scifact/d$d/docs.i8v --queries data/scifact/d$d/queries.i8v --top-k 100 \
+        --out runs/d$d/plain.run
 done
+privret evaluate --qrels data/scifact/qrels.tsv data/scifact/d64/float.run runs/d64/plain.run
 pip install -e . --group dev
 ruff check && ruff format --check && mypy && python -m pytest -q
 ```
 
-Drop `--max-queries` to search every query; each subcommand documents its options under `--help`. The tests cover the
+`privret plain` without `--max-queries` ranks all 300 test queries for the quantization comparison; `--group dev`
+needs pip 25.1 or newer. Each subcommand documents its options under `--help`. The tests cover the
 file formats, ranking, encrypted-versus-plaintext search across thread counts, quantization, evaluation and an
 end-to-end `privret run`, which CI also runs on Python 3.12 and 3.13.
