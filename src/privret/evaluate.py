@@ -20,7 +20,11 @@ class RunQuality:
 
 
 def fields(path: Path, count: int) -> list[list[str]]:
-    rows = [line.split() for line in path.read_text().splitlines()]
+    try:
+        text = path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as err:
+        raise FormatError(f"{path} is not UTF-8 text") from err
+    rows = [line.split() for line in text.splitlines()]
     for number, row in enumerate(rows, start=1):
         if len(row) != count:
             raise FormatError(f"{path}:{number} has {len(row)} fields, not {count}")

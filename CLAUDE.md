@@ -34,7 +34,8 @@ model named by `embed.MODEL`; CI and the tests never install or run it, and with
   `embed.py`: SciFact loading and embedding. `evaluate.py`: qrels/run parsing and nDCG@10, Recall@100.
 - `tests/fixture.py`: the tiny vector dataset behind `test_pipeline.py` and the smoke run. `test_fileformat.py`:
   byte-exact encodings, malformed input. `test_search.py`: encrypted vs plain search. `test_pipeline.py`: `privret
-  run` via `cli.main`, and `pipeline.embed` output from synthetic embeddings. `test_ranking.py`, `test_evaluate.py`.
+  run` and the standalone commands via `cli.main`, `main`'s error exit, argument parsing, `evaluate` output, and
+  `pipeline.embed` output from synthetic embeddings. `test_ranking.py`, `test_evaluate.py`.
 
 ## Data flow and files
 
@@ -48,7 +49,8 @@ ids (`encode_ids`): vectors (`VECTORS_MAGIC`, `VECTORS_VERSION`) hold row-major 
 (`SealedKind.magic`, `PFE_VERSION`) hold a count, u64 `max_norm_sq`, ids and fixed-size pfe records; the master key
 (`MASTER_KEY_MAGIC`, `PFE_VERSION`) holds pfe bytes. Decoding goes through `Reader` and pfe `from_bytes`, never pickle.
 
-- New command: a `pipeline` function (I/O plus a `Timings` record) and a handler plus `command(...)` in `cli.parser`.
+- New command: a `pipeline` function (I/O, plus a `Timings` record for a timed step) and a handler plus
+  `command(...)` in `cli.parser`.
   Only `cli.py` and `pipeline.py` may `print` (ruff `T201` per-file ignores).
 - New format or sealed kind: a codec pair or `SealedKind` in `fileformat.py`, a `Sealing` in `pipeline.py` (timing
   field names), cases in `test_fileformat.py`.

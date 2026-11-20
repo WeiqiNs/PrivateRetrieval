@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 from fixture import write_fixture
 
-from privret import cli, pipeline
+from privret import cli, pipeline, server
 from privret.evaluate import read_qrels
 from privret.export import Export, export_dim
 from privret.fileformat import decode_vectors
@@ -103,8 +103,9 @@ def test_evaluate_prints_one_row_per_run_and_rejects_shared_names(
             ["search", "--corpus", "data/queries.i8v", "--keys", "data/queries.i8v", "--top-k", "1", "--out", "o"],
             "expected a PRCT file",
         ),
+        (["evaluate", "--qrels", "data/docs.i8v", "data/queries.i8v"], "data/queries.i8v is not UTF-8 text"),
     ],
-    ids=["os error", "format error"],
+    ids=["os error", "format error", "binary qrels"],
 )
 def test_main_reports_errors_and_exits_1(
     argv: list[str], message: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
@@ -128,3 +129,71 @@ def test_parser_rejects_out_of_range_numbers(argv: list[str], capsys: pytest.Cap
         cli.parser().parse_args([command, *argv])
     assert info.value.code == 2
     assert f"argument {argv[0]}" in capsys.readouterr().err
+
+
+def test_standalone_commands_match_and_time_to_stderr(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write_fixture(tmp_path / "data")
+    monkeypatch.chdir(tmp_path)
+    commands = [
+        ["setup", "--dim", "4", "--msk", "k/msk.bin"],
+        ["encrypt", "--msk", "k/msk.bin", "--vectors", "data/docs.i8v", "--out", "s/corpus.ct"],
+        [
+            "keygen",
+            "--msk",
+            "k/msk.bin",
+            "--vectors",
+            "data/queries.i8v",
+            "--out",
+            "s/queries.sk",
+            "--max-queries",
+            "2",
+        ],
+        [
+            "search",
+            "--corpus",
+            "s/corpus.ct",
+            "--keys",
+            "s/queries.sk",
+            "--top-k",
+            "3",
+            "--out",
+            "r/e.run",
+            "--threads",
+            "2",
+        ],
+        [
+            "plain",
+            "--docs",
+            "data/docs.i8v",
+            "--queries",
+            "data/queries.i8v",
+            "--top-k",
+            "3",
+            "--out",
+            "r/p.run",
+            "--max-queries",
+            "2",
+        ],
+    ]
+    for argv in commands:
+        assert cli.main(argv) == 0
+    plain = (tmp_path / "r" / "p.run").read_text()
+    assert (tmp_path / "r" / "e.run").read_text() == plain
+    assert [line.split()[0] for line in plain.splitlines()] == ["q0"] * 3 + ["q1"] * 3
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    timings = [json.loads(line) for line in captured.err.splitlines()]
+    assert [timing["command"] for timing in timings] == ["setup", "encrypt", "keygen", "search", "plain"]
+    assert (timings[2]["queries"], timings[3]["threads"]) == (2, 2)
+
+
+def test_run_rejects_an_encrypted_run_that_differs_from_the_plain_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write_fixture(tmp_path / "data")
+    monkeypatch.setattr(server, "search_encrypted", lambda *_, **__: ())
+    argv = ["run", "--data", str(tmp_path / "data"), "--out", str(tmp_path / "out"), "--top-k", "1"]
+    assert cli.main(argv) == 1
+    assert "encrypted.run differs from" in capsys.readouterr().err
