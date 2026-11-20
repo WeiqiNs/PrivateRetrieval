@@ -26,7 +26,7 @@ def search_encrypted(corpus: Corpus, keys: QueryKeys, *, table: pfe.DlogTable, t
             if None in scores:
                 raise DecryptError(
                     f"query {query} and doc {corpus.ids[scores.index(None)]} decrypt outside the score range; "
-                    "were they made from the same master key?"
+                    "were they made from the same master key, with headers that state their true norms?"
                 )
             rows.append(scores)
     return rank(query_ids=keys.ids, doc_ids=corpus.ids, scores=np.array(rows, dtype=np.int64), top_k=top_k)

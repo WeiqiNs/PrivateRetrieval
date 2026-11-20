@@ -50,6 +50,10 @@ def test_rejects_keys_from_another_master_key_or_dim() -> None:
     with pytest.raises(DecryptError, match="query q0 and doc d0 decrypt outside the score range"):
         search_encrypted(corpus, foreign_keys, table=score_table(corpus, foreign_keys), top_k=3, threads=2)
     short = Vectors(("s0",), np.ones((1, DIM - 1), dtype=np.int8))
+    with pytest.raises(FormatError, match="vectors have dim 5 but the master key has dim 6"):
+        seal(opt.setup(DIM), short, KEYS)
+    with pytest.raises(FormatError, match="documents have dim 6 but queries have dim 5"):
+        search_plain(DOCS, short, top_k=3)
     short_keys = seal(opt.setup(DIM - 1), short, KEYS)
     with pytest.raises(FormatError, match="documents have dim 6 but queries have dim 5"):
         search_encrypted(corpus, short_keys, table=score_table(corpus, short_keys), top_k=3, threads=2)

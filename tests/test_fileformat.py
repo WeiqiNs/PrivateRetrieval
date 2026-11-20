@@ -51,6 +51,7 @@ def test_vectors_round_trip_and_derive_the_norm() -> None:
         (put(12, b"\x00"), "between 1 and 2\\^32 - 1 ids, got 0"),
         (lambda data: data.pop(), "need 6 bytes, found 5"),
         (lambda data: data.append(0), "need 6 bytes, found 7"),
+        (lambda data: data.__delitem__(slice(21, None)), "file is truncated"),
         (put(26, b"\x80"), "int8 entries must lie in"),
         (put(21, b"a"), "id 1 repeats an earlier id"),
         (put(21, b" "), "id 1 must be 1 to 65535 printable"),
@@ -65,6 +66,7 @@ def test_vectors_round_trip_and_derive_the_norm() -> None:
         "count 0",
         "truncated",
         "trailing byte",
+        "truncated id",
         "entry -128",
         "duplicate id",
         "id with a space",
@@ -77,6 +79,17 @@ def test_rejects_malformed_vectors(mutate: Callable[[bytearray], None], message:
     mutate(data)
     with pytest.raises(FormatError, match=message):
         decode_vectors(bytes(data))
+
+
+@pytest.mark.parametrize(
+    "id_",
+    ["a\xa0b", "a\u3000b", "a\x85b", "a\x7fb", "x" * 65536],
+    ids=["no-break space", "ideographic space", "next line", "delete", "65536 bytes"],
+)
+def test_rejects_ids_a_run_line_would_split_or_encode_wrongly(id_: str) -> None:
+    with pytest.raises(FormatError, match="id 1 must be 1 to 65535 printable"):
+        Vectors(("\xe9", id_), np.ones((2, 1), dtype=np.int8))
+    assert Vectors(("\xe9", "x" * 65535), np.ones((2, 1), dtype=np.int8)).dim == 1
 
 
 def test_rejects_vectors_where_ciphertexts_are_expected() -> None:
@@ -116,6 +129,10 @@ def test_sealed_tables_reject_corruption() -> None:
     with pytest.raises(FormatError, match=r"record 0 \(a\) does not decode") as info:
         decode_sealed(bytes(wrong_n), CIPHERTEXTS)
     assert isinstance(info.value.__cause__, pfe.DecodeError)
+    wrong_dim = bytearray(data)
+    wrong_dim[8:12] = (4).to_bytes(4, "little")
+    with pytest.raises(FormatError, match=r"record 0 \(a\) has dim 3, not 4"):
+        decode_sealed(bytes(wrong_dim), CIPHERTEXTS)
 
 
 def test_master_key_round_trips() -> None:
@@ -125,3 +142,7 @@ def test_master_key_round_trips() -> None:
     assert bytes(decoded) == bytes(msk)
     with pytest.raises(FormatError, match="the master key does not decode"):
         decode_master_key(data[:-1])
+    wrong_dim = bytearray(data)
+    wrong_dim[8:12] = (4).to_bytes(4, "little")
+    with pytest.raises(FormatError, match="the master key has dim 3 but its header says 4"):
+        decode_master_key(bytes(wrong_dim))

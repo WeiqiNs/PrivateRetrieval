@@ -9,7 +9,7 @@ from typing import TextIO
 from pfe.ipfe import opt
 
 from privret import client, server
-from privret.errors import RunMismatchError
+from privret.errors import PrivretError, RunMismatchError
 from privret.evaluate import evaluate, format_qrels, format_table, read_qrels, read_run
 from privret.export import Export
 from privret.fileformat import (
@@ -175,5 +175,10 @@ def run(*, data: Path, out: Path, top_k: int, max_queries: int | None, threads: 
 
 
 def evaluate_runs(*, qrels: Path, runs: Sequence[Path]) -> None:
-    named_runs = {f"{path.parent.name}/{path.name}": read_run(path) for path in runs}
+    named_runs: dict[str, dict[str, dict[str, float]]] = {}
+    for path in runs:
+        name = f"{path.parent.name}/{path.name}"
+        if name in named_runs:
+            raise PrivretError(f"two runs are named {name}")
+        named_runs[name] = read_run(path)
     print(format_table(evaluate(read_qrels(qrels), named_runs)), end="")

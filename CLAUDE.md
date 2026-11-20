@@ -34,7 +34,8 @@ model named by `embed.MODEL`; CI and the tests never install or run it, and with
   `embed.py`: SciFact loading and embedding. `evaluate.py`: qrels/run parsing and nDCG@10, Recall@100.
 - `tests/fixture.py`: the tiny vector dataset behind `test_pipeline.py` and the smoke run. `test_fileformat.py`:
   byte-exact encodings, malformed input. `test_search.py`: encrypted vs plain search. `test_pipeline.py`: `privret
-  run` via `cli.main`, and `pipeline.embed` output from synthetic embeddings. `test_ranking.py`, `test_evaluate.py`.
+  run` and the standalone commands via `cli.main`, `main`'s error exit, argument parsing, `evaluate` output, and
+  `pipeline.embed` output from synthetic embeddings. `test_ranking.py`, `test_evaluate.py`.
 
 ## Data flow and files
 
@@ -48,7 +49,8 @@ ids (`encode_ids`): vectors (`VECTORS_MAGIC`, `VECTORS_VERSION`) hold row-major 
 (`SealedKind.magic`, `PFE_VERSION`) hold a count, u64 `max_norm_sq`, ids and fixed-size pfe records; the master key
 (`MASTER_KEY_MAGIC`, `PFE_VERSION`) holds pfe bytes. Decoding goes through `Reader` and pfe `from_bytes`, never pickle.
 
-- New command: a `pipeline` function (I/O plus a `Timings` record) and a handler plus `command(...)` in `cli.parser`.
+- New command: a `pipeline` function (I/O, plus a `Timings` record for a timed step) and a handler plus
+  `command(...)` in `cli.parser`.
   Only `cli.py` and `pipeline.py` may `print` (ruff `T201` per-file ignores).
 - New format or sealed kind: a codec pair or `SealedKind` in `fileformat.py`, a `Sealing` in `pipeline.py` (timing
   field names), cases in `test_fileformat.py`.
@@ -64,13 +66,13 @@ ids (`encode_ids`): vectors (`VECTORS_MAGIC`, `VECTORS_VERSION`) hold row-major 
 - `server.score_table` sizes the discrete-log table from headers alone, bounding scores by `isqrt(Nd * Nq)`.
   `decode_sealed` rejects `max_norm_sq` above `127^2 * dim`, so a forged header cannot demand a larger table, and
   `Vectors` rejects -128 so the bound holds (`test_fileformat.py`). A score outside the table means keys from another
-  master key: `search_encrypted` raises `DecryptError` (`test_search.py`).
+  master key or a header understating `max_norm_sq`: `search_encrypted` raises `DecryptError` (`test_search.py`).
 - `server.py` never imports `client.py`; `Corpus`/`QueryKeys` are `Sealed[opt.Ciphertext]`/`Sealed[opt.Key]`, so
   mypy rejects passing one as the other.
-- Ids are unique, 1 to 65535 printable non-space UTF-8 bytes (`fileformat.check_ids`), because qrels and run lines
-  are whitespace-split (`evaluate.fields`).
+- Ids are unique, 1 to 65535 UTF-8 bytes of printable non-space characters (`fileformat.check_ids`,
+  `str.isprintable`), because qrels and run lines are whitespace-split (`evaluate.fields`), Unicode whitespace included.
 - `pipeline.write_private` opens `msk.bin` with mode 0o600 and also `fchmod`s it, because the open mode is ignored
-  when the file already exists (`test_pipeline.py` checks the mode on a fresh run).
+  when the file already exists (`test_pipeline.py` runs over an existing 0o644 `msk.bin` and checks the mode).
 - `FormatError` covers malformed files (including wrapped `pfe.DecodeError`), dim mismatches (`client.seal`,
   `ranking.search_plain`, `server.search_encrypted`) and bad qrels/run lines.
 - `quantize` fixes one scale from the documents (`127 / max |doc entry|`) and reuses it for queries, clipping them;
