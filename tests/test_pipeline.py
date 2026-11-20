@@ -42,7 +42,7 @@ def test_embed_writes_vectors_float_run_summary_and_qrels(tmp_path: Path, capsys
         doc_ids=("d0", "d1", "d2"),
         query_ids=("q0", "q1"),
         docs=np.array([[0.5, -0.25], [0.1, 0.0], [0.0, 0.5]], dtype=np.float32),
-        queries=np.array([[0.6, -0.1], [0.0, 0.25]], dtype=np.float32),
+        queries=np.array([[0.6, -0.1], [0.5, 0.25]], dtype=np.float32),
     )
     pipeline.embed(export=Export(qrels=qrels, dims=(dim_export,)), out=tmp_path)
 
@@ -54,14 +54,14 @@ def test_embed_writes_vectors_float_run_summary_and_qrels(tmp_path: Path, capsys
     assert docs.values.tolist() == [[127, -64], [25, 0], [0, 127]]
     queries = decode_vectors((folder / "queries.i8v").read_bytes())
     assert queries.ids == ("q0", "q1")
-    assert queries.values.tolist() == [[127, -25], [0, 64]]
+    assert queries.values.tolist() == [[127, -25], [127, 64]]
     assert (folder / "float.run").read_text().splitlines() == [
         "q0 Q0 d0 1 0.325000 float",
         "q0 Q0 d1 2 0.060000 float",
         "q0 Q0 d2 3 -0.050000 float",
-        "q1 Q0 d2 1 0.125000 float",
-        "q1 Q0 d1 2 0.000000 float",
-        "q1 Q0 d0 3 -0.062500 float",
+        "q1 Q0 d0 1 0.187500 float",
+        "q1 Q0 d2 2 0.125000 float",
+        "q1 Q0 d1 3 0.050000 float",
     ]
     expected = {"dim": 2, "scale": 254.0, "max_abs_doc": 0.5, "clipped_query_entries": 1, "docs": 3, "queries": 2}
     assert (folder / "quant.json").read_text() == json.dumps(expected, indent=2) + "\n"
