@@ -81,6 +81,17 @@ def test_rejects_malformed_vectors(mutate: Callable[[bytearray], None], message:
         decode_vectors(bytes(data))
 
 
+@pytest.mark.parametrize(
+    "id_",
+    ["a\xa0b", "a\u3000b", "a\x85b", "a\x7fb", "x" * 65536],
+    ids=["no-break space", "ideographic space", "next line", "delete", "65536 bytes"],
+)
+def test_rejects_ids_a_run_line_would_split_or_encode_wrongly(id_: str) -> None:
+    with pytest.raises(FormatError, match="id 1 must be 1 to 65535 printable"):
+        Vectors(("\xe9", id_), np.ones((2, 1), dtype=np.int8))
+    assert Vectors(("\xe9", "x" * 65535), np.ones((2, 1), dtype=np.int8)).dim == 1
+
+
 def test_rejects_vectors_where_ciphertexts_are_expected() -> None:
     with pytest.raises(FormatError, match="expected a PRCT file"):
         decode_sealed(SAMPLE_BYTES, CIPHERTEXTS)

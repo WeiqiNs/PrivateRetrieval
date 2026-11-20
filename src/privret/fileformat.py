@@ -1,4 +1,3 @@
-import re
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -21,7 +20,7 @@ VECTORS_MAGIC = b"PRVC"
 VECTORS_VERSION = 1
 PFE_VERSION = 2
 MASTER_KEY_MAGIC = b"PRMK"
-ID_BYTES = re.compile(rb"[\x21-\x7e\x80-\xff]{1,65535}")
+MAX_ID_BYTES = 65535
 
 
 def check_dim(dim: int) -> None:
@@ -34,8 +33,8 @@ def check_ids(ids: tuple[str, ...]) -> None:
         raise FormatError(f"a table needs between 1 and 2^32 - 1 ids, got {len(ids)}")
     seen: set[str] = set()
     for index, id_ in enumerate(ids):
-        if ID_BYTES.fullmatch(id_.encode("utf-8")) is None:
-            raise FormatError(f"id {index} must be 1 to 65535 printable non-space bytes")
+        if not (1 <= len(id_.encode("utf-8")) <= MAX_ID_BYTES and id_.isprintable() and " " not in id_):
+            raise FormatError(f"id {index} must be 1 to {MAX_ID_BYTES} printable non-space bytes")
         if id_ in seen:
             raise FormatError(f"id {index} repeats an earlier id")
         seen.add(id_)

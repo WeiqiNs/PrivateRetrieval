@@ -64,11 +64,11 @@ ids (`encode_ids`): vectors (`VECTORS_MAGIC`, `VECTORS_VERSION`) hold row-major 
 - `server.score_table` sizes the discrete-log table from headers alone, bounding scores by `isqrt(Nd * Nq)`.
   `decode_sealed` rejects `max_norm_sq` above `127^2 * dim`, so a forged header cannot demand a larger table, and
   `Vectors` rejects -128 so the bound holds (`test_fileformat.py`). A score outside the table means keys from another
-  master key: `search_encrypted` raises `DecryptError` (`test_search.py`).
+  master key or a header understating `max_norm_sq`: `search_encrypted` raises `DecryptError` (`test_search.py`).
 - `server.py` never imports `client.py`; `Corpus`/`QueryKeys` are `Sealed[opt.Ciphertext]`/`Sealed[opt.Key]`, so
   mypy rejects passing one as the other.
-- Ids are unique, 1 to 65535 printable non-space UTF-8 bytes (`fileformat.check_ids`), because qrels and run lines
-  are whitespace-split (`evaluate.fields`).
+- Ids are unique, 1 to 65535 UTF-8 bytes of printable non-space characters (`fileformat.check_ids`,
+  `str.isprintable`), because qrels and run lines are whitespace-split (`evaluate.fields`), Unicode whitespace included.
 - `pipeline.write_private` opens `msk.bin` with mode 0o600 and also `fchmod`s it, because the open mode is ignored
   when the file already exists (`test_pipeline.py` checks the mode on a fresh run).
 - `FormatError` covers malformed files (including wrapped `pfe.DecodeError`), dim mismatches (`client.seal`,
