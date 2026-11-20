@@ -3,8 +3,8 @@
 `privret` ranks an encrypted embedding corpus against encrypted queries: the client quantizes embeddings to int8,
 encrypts documents and turns queries into functional keys; the server decrypts only the scores and ranks. The scheme
 is `pfe.ipfe.opt` from RustPFE's Python binding, a git dependency pinned to a RustPFE commit in `pyproject.toml`
-`[project] dependencies`; it builds from source, so installing needs a Rust toolchain. `README.md` is the user-facing
-overview, threat model and results.
+`[project] dependencies`; it builds from source, so installing needs a Rust toolchain. Python >= 3.12 is required.
+`README.md` is the user-facing overview, what the server learns, and results.
 
 ## Commands (as `.github/workflows/ci.yml` runs them)
 
@@ -24,8 +24,9 @@ model named by `embed.MODEL`; CI and the tests never install or run it, and with
 
 - `src/privret/cli.py`: `parser` and thin handlers that map args to one `pipeline` call; `main` prints any
   `PrivretError` or `OSError` as `privret: <message>` and returns 1.
-- `src/privret/pipeline.py`: all file I/O and timing (`embed`, `setup`, `seal_file`, `search`, `plain`, `run`,
-  `evaluate_runs`); `Timings` writes one JSON line per step, to stderr for standalone commands.
+- `src/privret/pipeline.py`: file I/O and timing (`embed`, `setup`, `seal_file`, `search`, `plain`, `run`,
+  `evaluate_runs`); `Timings` writes one JSON line per step, to stderr for standalone commands. The one other file
+  reader is `evaluate.fields` (qrels and run text).
 - `src/privret/fileformat.py`: `Vectors`, `Sealed`/`SealedKind` (`CIPHERTEXTS`, `KEYS`), `Corpus`/`QueryKeys`, and
   every binary codec with its validation. `errors.py`: `PrivretError` and its subclasses.
 - `src/privret/client.py` (`seal`) is the key holder's side; `server.py` (`score_table`, `search_encrypted`) the
@@ -42,10 +43,11 @@ model named by `embed.MODEL`; CI and the tests never install or run it, and with
 `embed.embed` -> `export.export_dim` (quantize, float `rank`) -> `pipeline.embed` writes `qrels.tsv` and
 `d<dim>/{docs.i8v,queries.i8v,float.run,quant.json}`. Then `pipeline.setup` (`msk.bin`), `seal_file` with
 `ENCRYPT`/`KEYGEN` (`corpus.ct`/`queries.sk`), `search` (encrypted run), `plain` (int8 run); `pipeline.run` does all
-of these into one directory plus `timing.jsonl`; `evaluate_runs` scores runs against qrels.
+of these into one directory plus `timing.jsonl`, reading `docs.i8v`/`queries.i8v` straight from `--data` (one
+`d<dim>` folder, not the `embed` output root); `evaluate_runs` scores runs against qrels.
 
 Binary files start with `fileformat.preamble` (magic, u32 version, u32 dim, little-endian) and use length-prefixed
-ids (`encode_ids`): vectors (`VECTORS_MAGIC`, `VECTORS_VERSION`) hold row-major int8; sealed tables
+ids (`encode_ids`): vectors (`VECTORS_MAGIC`, `VECTORS_VERSION`) hold a count, ids and row-major int8; sealed tables
 (`SealedKind.magic`, `PFE_VERSION`) hold a count, u64 `max_norm_sq`, ids and fixed-size pfe records; the master key
 (`MASTER_KEY_MAGIC`, `PFE_VERSION`) holds pfe bytes. Decoding goes through `Reader` and pfe `from_bytes`, never pickle.
 
@@ -62,7 +64,7 @@ ids (`encode_ids`): vectors (`VECTORS_MAGIC`, `VECTORS_VERSION`) hold row-major 
 - The encrypted run equals the int8 plain run byte for byte; `pipeline.run` raises `RunMismatchError` otherwise
   (`test_search.py::test_encrypted_search_matches_plain_search_exactly`, `test_pipeline.py`).
 - `ranking.rank` is the one ordering, score descending then doc id ascending, for float, plain and encrypted runs
-  (`test_ranking.py`). Results do not depend on `--threads`; the search test runs 1, 3 and 16 threads over 10 docs.
+  (`test_ranking.py`). Results do not depend on `--threads` (`test_search.py` runs several thread counts).
 - `server.score_table` sizes the discrete-log table from headers alone, bounding scores by `isqrt(Nd * Nq)`.
   `decode_sealed` rejects `max_norm_sq` above `127^2 * dim`, so a forged header cannot demand a larger table, and
   `Vectors` rejects -128 so the bound holds (`test_fileformat.py`). A score outside the table means keys from another
@@ -83,5 +85,5 @@ ids (`encode_ids`): vectors (`VECTORS_MAGIC`, `VECTORS_VERSION`) hold row-major 
 
 ## CI
 
-One job in `.github/workflows/ci.yml`, on push and PR to `main`, over the Python matrix defined there: stable Rust,
-install without `embed`, lint, mypy, pytest, smoke run.
+One job in `.github/workflows/ci.yml`, on push and PR to `main` or manual dispatch, over the Python matrix defined
+there: stable Rust, install without `embed`, lint, mypy, pytest, smoke run.
