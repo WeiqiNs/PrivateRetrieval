@@ -15,6 +15,8 @@ def test_run_matches_plain_and_records_timings(tmp_path: Path, capsys: pytest.Ca
     data = tmp_path / "data"
     out = tmp_path / "out"
     write_fixture(data)
+    out.mkdir()
+    (out / "msk.bin").touch(mode=0o644)
     argv = ["run", "--data", str(data), "--out", str(out), "--top-k", "5", "--max-queries", "2", "--threads", "3"]
     assert cli.main(argv) == 0
 
@@ -66,3 +68,63 @@ def test_embed_writes_vectors_float_run_summary_and_qrels(tmp_path: Path, capsys
     expected = {"dim": 2, "scale": 254.0, "max_abs_doc": 0.5, "clipped_query_entries": 1, "docs": 3, "queries": 2}
     assert (folder / "quant.json").read_text() == json.dumps(expected, indent=2) + "\n"
     assert capsys.readouterr().out == json.dumps(expected) + "\n"
+
+
+def test_evaluate_prints_one_row_per_run_and_rejects_shared_names(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    qrels = tmp_path / "qrels.tsv"
+    qrels.write_text("q1 0 d1 1\nq2 0 d2 1\n")
+    exact = tmp_path / "exact" / "x.run"
+    partial = tmp_path / "partial" / "x.run"
+    exact.parent.mkdir()
+    partial.parent.mkdir()
+    exact.write_text("q1 Q0 d1 1 2 privret\nq2 Q0 d2 1 1 privret\n")
+    partial.write_text("q1 Q0 d9 1 1.0 float\nq1 Q0 d1 2 0.5 float\n")
+    assert cli.main(["evaluate", "--qrels", str(qrels), str(exact), str(partial)]) == 0
+    assert capsys.readouterr().out == (
+        "| run | queries | nDCG@10 | Recall@100 |\n"
+        "|---|---|---|---|\n"
+        "| exact/x.run | 1 | 1.0000 | 1.0000 |\n"
+        "| partial/x.run | 1 | 0.6309 | 1.0000 |\n"
+    )
+    shadow = tmp_path / "other" / "exact" / "x.run"
+    shadow.parent.mkdir(parents=True)
+    shadow.write_text(partial.read_text())
+    assert cli.main(["evaluate", "--qrels", str(qrels), str(exact), str(shadow)]) == 1
+    assert capsys.readouterr().err == "privret: two runs are named exact/x.run\n"
+
+
+@pytest.mark.parametrize(
+    ("argv", "message"),
+    [
+        (["run", "--data", "missing", "--out", "out", "--top-k", "1"], "No such file or directory"),
+        (
+            ["search", "--corpus", "data/queries.i8v", "--keys", "data/queries.i8v", "--top-k", "1", "--out", "o"],
+            "expected a PRCT file",
+        ),
+    ],
+    ids=["os error", "format error"],
+)
+def test_main_reports_errors_and_exits_1(
+    argv: list[str], message: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write_fixture(tmp_path / "data")
+    monkeypatch.chdir(tmp_path)
+    assert cli.main(argv) == 1
+    err = capsys.readouterr().err
+    assert err.startswith("privret: ")
+    assert message in err
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [["--top-k", "0"], ["--top-k", "x"], ["--threads", "0"], ["--dim", "4097"]],
+    ids=["top-k 0", "top-k not a number", "threads 0", "dim 4097"],
+)
+def test_parser_rejects_out_of_range_numbers(argv: list[str], capsys: pytest.CaptureFixture[str]) -> None:
+    command = "setup" if argv[0] == "--dim" else "search"
+    with pytest.raises(SystemExit) as info:
+        cli.parser().parse_args([command, *argv])
+    assert info.value.code == 2
+    assert f"argument {argv[0]}" in capsys.readouterr().err

@@ -70,7 +70,7 @@ ids (`encode_ids`): vectors (`VECTORS_MAGIC`, `VECTORS_VERSION`) hold row-major 
 - Ids are unique, 1 to 65535 UTF-8 bytes of printable non-space characters (`fileformat.check_ids`,
   `str.isprintable`), because qrels and run lines are whitespace-split (`evaluate.fields`), Unicode whitespace included.
 - `pipeline.write_private` opens `msk.bin` with mode 0o600 and also `fchmod`s it, because the open mode is ignored
-  when the file already exists (`test_pipeline.py` checks the mode on a fresh run).
+  when the file already exists (`test_pipeline.py` runs over an existing 0o644 `msk.bin` and checks the mode).
 - `FormatError` covers malformed files (including wrapped `pfe.DecodeError`), dim mismatches (`client.seal`,
   `ranking.search_plain`, `server.search_encrypted`) and bad qrels/run lines.
 - `quantize` fixes one scale from the documents (`127 / max |doc entry|`) and reuses it for queries, clipping them;
